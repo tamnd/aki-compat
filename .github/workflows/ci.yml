@@ -1,0 +1,58 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  # Baseline build and test. No server binaries are installed, so the suite
+  # exercises the codec, the comparator, and the clean skip path. This job is the
+  # one that must stay green.
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
+        with:
+          go-version: '1.26'
+
+      - name: gofmt
+        run: |
+          unformatted=$(gofmt -l .)
+          if [ -n "$unformatted" ]; then
+            echo "These files need gofmt:"
+            echo "$unformatted"
+            exit 1
+          fi
+
+      - name: go vet
+        run: go vet ./...
+
+      - name: go build
+        run: go build ./...
+
+      - name: go test
+        run: go test ./...
+
+  # Real differential run against Redis and Valkey from apt. This is best-effort:
+  # if apt or the servers misbehave the green baseline above is unaffected.
+  differential:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
+        with:
+          go-version: '1.26'
+
+      - name: Install Redis and Valkey
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y redis-server valkey-server || sudo apt-get install -y redis-server
+
+      - name: Run differential suite
+        run: go test -v ./differential/...
