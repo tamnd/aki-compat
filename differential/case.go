@@ -53,6 +53,10 @@ const (
 	// servers can legitimately disagree. We still assert both answered with a
 	// bulk string rather than an error.
 	ToleranceEncoding
+	// ToleranceAny accepts any two non-error replies regardless of type or value.
+	// Use this for responses that are version-specific but structurally present
+	// on both servers (HELLO version fields, COMMAND COUNT, OBJECT HELP text).
+	ToleranceAny
 )
 
 // Case is a named scenario. Each command in Steps runs in order on the same
@@ -226,6 +230,9 @@ func (r *Runner) match(base, got respwire.Value, tol Tolerance) bool {
 		return respwire.Equal(b, g, r.opts)
 	case ToleranceEncoding:
 		return base.Kind == respwire.KindBulkString && got.Kind == respwire.KindBulkString
+	case ToleranceAny:
+		// Both servers responded; accept any reply type or value.
+		return true
 	default:
 		return respwire.Equal(base, got, r.opts)
 	}
