@@ -1,0 +1,20 @@
+# Build output.
+/aki-compat
+/bin/
+*.exe
+
+# Test and coverage artifacts.
+*.out
+*.test
+*.prof
+
+# Local data left by spawned servers (should be cleaned up, kept here as a guard).
+*.aki
+*.db
+dump.rdb
+
+# Editor and OS noise.
+.DS_Store
+*.swp
+.idea/
+.vscode/
