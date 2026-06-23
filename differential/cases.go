@@ -835,13 +835,15 @@ func Cases() []Case {
 			Tolerate: map[int]Tolerance{0: ToleranceAny},
 		},
 
-		// DEBUG SLEEP and OBJECT FREQ (LFU).
+		// Verify stream type via XADD + TYPE. XADD * generates a timestamp-based ID
+		// that differs between servers, so step 0 is tolerated.
 		{
 			Name: "object-encoding-stream",
 			Steps: []Command{
 				{"XADD", "s", "*", "field", "value"},
 				{"TYPE", "s"},
 			},
+			Tolerate: map[int]Tolerance{0: ToleranceAny},
 		},
 
 		// BITCOUNT, BITPOS.
