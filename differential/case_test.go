@@ -37,6 +37,38 @@ func TestMatchErrPrefix(t *testing.T) {
 	}
 }
 
+func TestMatchUnordered(t *testing.T) {
+	r := &Runner{opts: respwire.DefaultNormalize()}
+	a := respwire.Value{Kind: respwire.KindArray, Elems: []respwire.Value{
+		{Kind: respwire.KindBulkString, Str: "a"},
+		{Kind: respwire.KindBulkString, Str: "b"},
+	}}
+	b := respwire.Value{Kind: respwire.KindArray, Elems: []respwire.Value{
+		{Kind: respwire.KindBulkString, Str: "b"},
+		{Kind: respwire.KindBulkString, Str: "a"},
+	}}
+	if !r.match(a, b, ToleranceUnordered) {
+		t.Error("reordered arrays should match unordered")
+	}
+	if r.match(a, b, ToleranceExact) {
+		t.Error("reordered arrays must not match exactly")
+	}
+}
+
+func TestMatchEncoding(t *testing.T) {
+	r := &Runner{opts: respwire.DefaultNormalize()}
+	quick := respwire.Value{Kind: respwire.KindBulkString, Str: "quicklist"}
+	listpack := respwire.Value{Kind: respwire.KindBulkString, Str: "listpack"}
+	errReply := respwire.Value{Kind: respwire.KindError, Str: "ERR no such key"}
+
+	if !r.match(quick, listpack, ToleranceEncoding) {
+		t.Error("two different encoding names should be tolerated")
+	}
+	if r.match(quick, errReply, ToleranceEncoding) {
+		t.Error("an error reply must not pass the encoding tolerance")
+	}
+}
+
 func TestMatchExactUsesNormalize(t *testing.T) {
 	r := &Runner{opts: respwire.DefaultNormalize()}
 	a := respwire.Value{Kind: respwire.KindBulkString, Str: "v"}

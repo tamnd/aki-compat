@@ -141,6 +141,9 @@ func Cases() []Case {
 
 		// Sets.
 		{
+			// On RESP2 SMEMBERS replies as a plain array, and the member order is
+			// unspecified, so step 2 is compared unordered. SCARD and SISMEMBER are
+			// exact.
 			Name: "set-add-members",
 			Steps: []Command{
 				{"SADD", "s", "a", "b", "c", "a"},
@@ -149,6 +152,7 @@ func Cases() []Case {
 				{"SISMEMBER", "s", "b"},
 				{"SISMEMBER", "s", "z"},
 			},
+			Tolerate: map[int]Tolerance{2: ToleranceUnordered},
 		},
 		{
 			Name:  "smembers-resp3",
@@ -173,11 +177,16 @@ func Cases() []Case {
 
 		// Encodings.
 		{
+			// OBJECT ENCODING returns a version-specific internal name, so step 1
+			// only asserts both servers replied with a bulk string. The point of the
+			// case is that OBJECT ENCODING exists and answers, not that two different
+			// server versions pick the same encoding.
 			Name: "object-encoding-int",
 			Steps: []Command{
 				{"SET", "k", "12345"},
 				{"OBJECT", "ENCODING", "k"},
 			},
+			Tolerate: map[int]Tolerance{1: ToleranceEncoding},
 		},
 		{
 			Name: "object-encoding-list",
@@ -185,6 +194,7 @@ func Cases() []Case {
 				{"RPUSH", "l", "a", "b", "c"},
 				{"OBJECT", "ENCODING", "l"},
 			},
+			Tolerate: map[int]Tolerance{1: ToleranceEncoding},
 		},
 
 		// WRONGTYPE error cases.

@@ -43,6 +43,16 @@ const (
 	// matches (for example both start with ERR). Redis and aki word the trailing
 	// detail of some errors differently, which is not a wire compatibility break.
 	ToleranceErrPrefix
+	// ToleranceUnordered sorts both array replies before comparing. On RESP2 the
+	// set commands (SMEMBERS and friends) reply as a plain array, not a RESP3 set,
+	// so the comparator cannot tell the order is unspecified. This says it is.
+	ToleranceUnordered
+	// ToleranceEncoding accepts any two non-error bulk string replies. OBJECT
+	// ENCODING returns an internal encoding name that is implementation and
+	// version specific (listpack vs quicklist, embstr vs raw), so two different
+	// servers can legitimately disagree. We still assert both answered with a
+	// bulk string rather than an error.
+	ToleranceEncoding
 )
 
 // Case is a named scenario. Each command in Steps runs in order on the same
@@ -204,6 +214,18 @@ func (r *Runner) match(base, got respwire.Value, tol Tolerance) bool {
 			return false
 		}
 		return firstWord(base.Str) == firstWord(got.Str)
+	case ToleranceUnordered:
+		if base.Kind != respwire.KindArray || got.Kind != respwire.KindArray {
+			return false
+		}
+		// Reuse the set comparison, which sorts members, by retagging both as sets.
+		b := base
+		b.Kind = respwire.KindSet
+		g := got
+		g.Kind = respwire.KindSet
+		return respwire.Equal(b, g, r.opts)
+	case ToleranceEncoding:
+		return base.Kind == respwire.KindBulkString && got.Kind == respwire.KindBulkString
 	default:
 		return respwire.Equal(base, got, r.opts)
 	}
