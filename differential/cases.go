@@ -8,7 +8,7 @@ package differential
 // wrong: substring ops, OBJECT ENCODING, WRONGTYPE errors, and MULTI/EXEC
 // framing. It is meant to grow; add a case by appending to this slice.
 func Cases() []Case {
-	return []Case{
+	base := []Case{
 		// Connection and echo.
 		{
 			Name:  "ping",
@@ -448,12 +448,21 @@ func Cases() []Case {
 			Tolerate: map[int]Tolerance{0: ToleranceAny},
 		},
 		{
-			// embstr vs raw threshold: strings ≤ 44 bytes are embstr, > 44 are raw.
+			// embstr vs raw threshold. This is version-specific, not just a name
+			// difference: Redis 7.x flips embstr to raw above 44 bytes
+			// (OBJ_ENCODING_EMBSTR_SIZE_LIMIT), so a 45-byte string is raw. Valkey 9.x
+			// raised that limit, so the same string is still embstr there. aki follows
+			// the Redis 7.4 rule. Because the two reference servers legitimately
+			// disagree on the threshold, step 1 takes ToleranceEncoding like every
+			// other OBJECT ENCODING case: we assert both answered with an encoding
+			// name, not that they chose the same one. Run against a real Redis 7.4 as
+			// the baseline to check aki picks raw here.
 			Name: "object-encoding-embstr-raw",
 			Steps: []Command{
-				{"SET", "short", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}, // 46 bytes: raw
+				{"SET", "short", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}, // 45 bytes: raw on Redis 7.4
 				{"OBJECT", "ENCODING", "short"},
 			},
+			Tolerate: map[int]Tolerance{1: ToleranceEncoding},
 		},
 		{
 			// Hash encoding: small hash is listpack.
@@ -914,5 +923,145 @@ func Cases() []Case {
 				{"GET", "k"},
 			},
 		},
+
+		// HyperLogLog. PFCOUNT is exact for the small cardinalities used here
+		// (the sparse representation counts exactly well past these sizes), so
+		// the estimates agree across servers without any approximation slack.
+		// The raw HLL string differs by representation, so it is never read back
+		// with GET; only the counts and the structural replies are compared.
+		{
+			Name: "pfadd-pfcount",
+			Steps: []Command{
+				{"PFADD", "hll", "a", "b", "c", "d", "e"},
+				{"PFCOUNT", "hll"},
+				{"PFADD", "hll", "a"},
+				{"PFCOUNT", "hll"},
+				{"TYPE", "hll"},
+			},
+		},
+		{
+			Name: "pfmerge",
+			Steps: []Command{
+				{"PFADD", "h1", "a", "b", "c"},
+				{"PFADD", "h2", "c", "d", "e"},
+				{"PFMERGE", "dest", "h1", "h2"},
+				{"PFCOUNT", "dest"},
+				{"PFCOUNT", "h1", "h2"},
+			},
+		},
+
+		// Bitmap BITOP and BITFIELD. Both are byte-exact across servers.
+		{
+			Name: "bitop",
+			Steps: []Command{
+				{"SET", "a", "abc"},
+				{"SET", "b", "abd"},
+				{"BITOP", "AND", "d_and", "a", "b"},
+				{"GET", "d_and"},
+				{"BITOP", "OR", "d_or", "a", "b"},
+				{"GET", "d_or"},
+				{"BITOP", "XOR", "d_xor", "a", "b"},
+				{"GET", "d_xor"},
+				{"BITOP", "NOT", "d_not", "a"},
+				{"STRLEN", "d_not"},
+			},
+		},
+		{
+			Name: "bitfield",
+			Steps: []Command{
+				{"BITFIELD", "bf", "SET", "u8", "0", "255", "GET", "u8", "0", "INCRBY", "u8", "0", "10", "OVERFLOW", "SAT", "INCRBY", "u8", "0", "100"},
+				{"BITFIELD", "bf2", "SET", "i8", "#0", "-128", "INCRBY", "i8", "#0", "-10"},
+				{"BITFIELD_RO", "bf", "GET", "u8", "0"},
+			},
+		},
+
+		// Scripting. EVAL return-value conversion, redis.call, and the error
+		// reply rules. error_reply prepends a generic ERR only when the message
+		// has no space-delimited code token, while a returned {err=...} table is
+		// always sent verbatim. These pin the Redis luaPushErrorBuff behavior.
+		{
+			Name: "eval-basic",
+			Steps: []Command{
+				{"EVAL", "return 1", "0"},
+				{"EVAL", "return 'hello'", "0"},
+				{"EVAL", "return {1,2,3}", "0"},
+				{"EVAL", "return #KEYS", "2", "a", "b"},
+				{"EVAL", "return ARGV[1]", "0", "x"},
+				{"EVAL", "return redis.status_reply('TEST')", "0"},
+				{"EVAL", "return redis.sha1hex('')", "0"},
+			},
+		},
+		{
+			Name: "eval-redis-call",
+			Steps: []Command{
+				{"EVAL", "return redis.call('set', KEYS[1], ARGV[1])", "1", "sk", "sv"},
+				{"GET", "sk"},
+				{"EVAL", "redis.call('incr', KEYS[1]); return redis.call('incr', KEYS[1])", "1", "ctr"},
+				{"GET", "ctr"},
+			},
+		},
+		{
+			Name: "eval-error-reply",
+			Steps: []Command{
+				{"EVAL", "return redis.error_reply('my error')", "0"},
+				{"EVAL", "return redis.error_reply('boom')", "0"},
+				{"EVAL", "return redis.error_reply('WRONGTYPE nope')", "0"},
+				{"EVAL", "return {err='raw table err'}", "0"},
+				{"EVAL", "return {err='oneword'}", "0"},
+			},
+		},
+		{
+			Name: "script-load-evalsha",
+			Steps: []Command{
+				{"SCRIPT", "LOAD", "return 42"},
+				{"EVALSHA", "1fa00e76656cc152ad327c13fe365858fd7be306", "0"},
+				{"SCRIPT", "EXISTS", "1fa00e76656cc152ad327c13fe365858fd7be306", "0000000000000000000000000000000000000000"},
+			},
+		},
+
+		// Stream consumer groups. Explicit entry IDs keep the case deterministic
+		// (an auto * ID embeds wall-clock time and would differ). XINFO STREAM is
+		// compared exactly so the groups count, last-generated-id, and first/last
+		// entry are pinned; the rax-tree fields are stable for a single-node
+		// stream this small.
+		{
+			Name: "xgroup-readgroup-ack",
+			Steps: []Command{
+				{"XADD", "st", "1-1", "f", "v1"},
+				{"XADD", "st", "2-2", "f", "v2"},
+				{"XGROUP", "CREATE", "st", "g1", "0"},
+				{"XREADGROUP", "GROUP", "g1", "c1", "COUNT", "10", "STREAMS", "st", ">"},
+				{"XACK", "st", "g1", "1-1"},
+				{"XPENDING", "st", "g1"},
+				{"XINFO", "GROUPS", "st"},
+				{"XLEN", "st"},
+			},
+		},
+		{
+			Name: "xinfo-stream-groups-count",
+			Steps: []Command{
+				{"XADD", "st", "1-1", "f", "v1"},
+				{"XADD", "st", "2-2", "f", "v2"},
+				{"XGROUP", "CREATE", "st", "g1", "0"},
+				{"XGROUP", "CREATE", "st", "g2", "0"},
+				{"XINFO", "STREAM", "st"},
+			},
+		},
+		{
+			// XSETID below the stream top item rejects with the exact Redis text
+			// ("smaller than the target stream top item"); raising it is allowed.
+			Name: "xsetid",
+			Steps: []Command{
+				{"XADD", "st", "5-5", "f", "v"},
+				{"XSETID", "st", "9-9"},
+				{"XSETID", "st", "1-1"},
+				{"XSETID", "st", "100-0", "ENTRIESADDED", "50", "MAXDELETEDID", "2-2"},
+			},
+		},
 	}
+
+	// Large collections carried through the generic key ops, the breadth that
+	// small-collection cases cannot reach because they never cross the inline
+	// encoding boundary.
+	return append(base, collKeyopCases()...)
 }
