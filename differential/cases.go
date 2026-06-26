@@ -1063,5 +1063,6 @@ func Cases() []Case {
 	// Large collections carried through the generic key ops, the breadth that
 	// small-collection cases cannot reach because they never cross the inline
 	// encoding boundary.
+	base = append(base, hashFieldTTLCases()...)
 	return append(base, collKeyopCases()...)
 }
