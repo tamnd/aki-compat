@@ -72,6 +72,23 @@ type Case struct {
 	// Tolerate maps a step index to a documented relaxation of the comparison for
 	// that step. A step not in the map is compared exactly.
 	Tolerate map[int]Tolerance
+	// Skip lists targets that are not asserted for this case. The compat target is
+	// Redis 7.4, and a few cases pin behavior that a downstream fork has since
+	// changed. Valkey 9.1, for instance, raised the hash-field expire ceiling and
+	// bundles a built-in lua module, so it diverges from 7.4 on those replies. A
+	// case that asserts the 7.4 behavior skips Valkey rather than reporting a false
+	// failure. The baseline (Redis) and aki are always compared.
+	Skip []target.Kind
+}
+
+// skips reports whether a target kind is excluded from this case.
+func (c Case) skips(k target.Kind) bool {
+	for _, s := range c.Skip {
+		if s == k {
+			return true
+		}
+	}
+	return false
 }
 
 // StepResult holds one command and the reply each target gave for it.
@@ -167,6 +184,9 @@ func (r *Runner) Run(c Case) CaseResult {
 	for stepIdx, cmd := range c.Steps {
 		step := StepResult{Command: cmd, Replies: make(map[target.Kind]respwire.Value, len(clients))}
 		for kind, cl := range clients {
+			if c.skips(kind) && kind != base {
+				continue
+			}
 			_ = cl.SetDeadline(time.Now().Add(r.timeout))
 			v, err := cl.Do(cmd...)
 			if err != nil {
