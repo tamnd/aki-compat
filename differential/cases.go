@@ -1060,6 +1060,10 @@ func Cases() []Case {
 		},
 	}
 
+	// The Redis 7.4 distinctive surface: hash field TTL, LCS, SINTERCARD,
+	// ZRANDMEMBER, SMOVE, the read-only command variants, and set encodings.
+	base = append(base, redis74SurfaceCases()...)
+
 	// Large collections carried through the generic key ops, the breadth that
 	// small-collection cases cannot reach because they never cross the inline
 	// encoding boundary.
