@@ -1,5 +1,7 @@
 package differential
 
+import "github.com/tamnd/aki-compat/target"
+
 // Redis 7.4 distinctive surface. These cases target commands and options that the
 // core table did not reach: the hash field TTL family that is the 7.4 headline
 // feature (HEXPIRE, HTTL, HPERSIST, HEXPIREAT, HEXPIRETIME), plus LCS, SINTERCARD,
@@ -76,6 +78,9 @@ func redis74SurfaceCases() []Case {
 				{"HEXPIREAT", "h", "99999999999", "FIELDS", "1", "f1"},
 				{"HTTL", "h", "FIELDS", "1", "f1"},
 			},
+			// Valkey 9.1 raised this ceiling and accepts the value, so it diverges
+			// from the 7.4 behavior aki targets. Assert against Redis only.
+			Skip: []target.Kind{target.KindValkey},
 		},
 		// HEXPIRE with a past or zero TTL deletes the field and reports 2; the field
 		// is then gone and an empty hash is removed like Redis removes it.
@@ -205,6 +210,40 @@ func redis74SurfaceCases() []Case {
 				{"SADD", "s", "notanumber"},
 				{"OBJECT", "ENCODING", "s"},
 			},
+		},
+
+		// ROLE on a standalone master with no replica attached: the backlog is not
+		// created until a replica connects, so master_repl_offset stays 0 and the
+		// reply is the fixed array ["master", 0, []] on both servers.
+		{
+			Name: "role-standalone-master",
+			Steps: []Command{
+				{"ROLE"},
+			},
+		},
+
+		// MODULE LIST on a server with no module loaded is the empty array. Both
+		// aki and a stock 7.4 build run module-free, so the reply matches exactly.
+		{
+			Name: "module-list-empty",
+			Steps: []Command{
+				{"MODULE", "LIST"},
+			},
+			// Valkey 9.1 bundles a built-in lua module, so its MODULE LIST is not
+			// empty. Redis 7.4 and aki both run module-free here. Assert on Redis.
+			Skip: []target.Kind{target.KindValkey},
+		},
+
+		// RESTORE-ASKING is reachable as a top-level command, not an unknown one.
+		// Feeding it a payload with a broken checksum hits the same deterministic
+		// "Bad data format" rejection on both servers, which proves the command is
+		// wired through (RESTORE itself is covered by the core table).
+		{
+			Name: "restore-asking-bad-payload",
+			Steps: []Command{
+				{"RESTORE-ASKING", "dst", "0", "not-a-valid-serialized-payload"},
+			},
+			Tolerate: map[int]Tolerance{0: ToleranceErrPrefix},
 		},
 	}
 }
