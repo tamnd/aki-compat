@@ -1076,5 +1076,10 @@ func Cases() []Case {
 	// Large collections carried through the generic key ops, the breadth that
 	// small-collection cases cannot reach because they never cross the inline
 	// encoding boundary.
-	return append(base, collKeyopCases()...)
+	base = append(base, collKeyopCases()...)
+
+	// The cursor scan family (SCAN, SSCAN, HSCAN with the 7.4 NOVALUES form, ZSCAN)
+	// plus the single-key commands the base table never reached: RPOPLPUSH, the
+	// conditional pushes, TOUCH, and the random-member readers.
+	return append(base, scan74Cases()...)
 }
