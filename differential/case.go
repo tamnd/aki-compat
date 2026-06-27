@@ -57,6 +57,13 @@ const (
 	// Use this for responses that are version-specific but structurally present
 	// on both servers (HELLO version fields, COMMAND COUNT, OBJECT HELP text).
 	ToleranceAny
+	// ToleranceScan compares a SCAN-family reply, which is a two element array of
+	// [cursor, elements]. The cursor value and the element order are both
+	// implementation specific, so this requires the cursor strings to match (both
+	// "0" once a small collection is fully scanned in one call) and compares the
+	// element list unordered. Use it only with a COUNT large enough that the whole
+	// collection comes back in a single call, so the cursor is "0" on both servers.
+	ToleranceScan
 )
 
 // Case is a named scenario. Each command in Steps runs in order on the same
@@ -253,6 +260,25 @@ func (r *Runner) match(base, got respwire.Value, tol Tolerance) bool {
 	case ToleranceAny:
 		// Both servers responded; accept any reply type or value.
 		return true
+	case ToleranceScan:
+		if base.Kind != respwire.KindArray || got.Kind != respwire.KindArray {
+			return false
+		}
+		if len(base.Elems) != 2 || len(got.Elems) != 2 {
+			return false
+		}
+		// The cursor (element 0) must agree. With a large enough COUNT both servers
+		// finish the scan in one call and return cursor "0".
+		if base.Elems[0].Str != got.Elems[0].Str {
+			return false
+		}
+		// Compare the element list (element 1) unordered: the scan order is not
+		// specified and differs between implementations.
+		b := base.Elems[1]
+		b.Kind = respwire.KindSet
+		g := got.Elems[1]
+		g.Kind = respwire.KindSet
+		return respwire.Equal(b, g, r.opts)
 	default:
 		return respwire.Equal(base, got, r.opts)
 	}
