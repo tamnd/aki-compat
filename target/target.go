@@ -140,6 +140,10 @@ func argsFor(k Kind, port int, dir string) []string {
 			"server",
 			"--addr", "127.0.0.1:" + p,
 			"--dbfile", filepath.Join(dir, "aki.db"),
+			// Turn off the diagnostic admin endpoint. It defaults to a fixed
+			// 127.0.0.1:6399, so several test instances spawned back to back would
+			// otherwise fight over that one port instead of their own free ports.
+			"--admin-port", "0",
 		}
 	default: // redis-server and valkey-server share the same flags
 		return []string{
