@@ -1068,6 +1068,11 @@ func Cases() []Case {
 	// reimplementation most often gets subtly wrong.
 	base = append(base, edge74Cases()...)
 
+	// Set algebra and the sorted-set range and aggregate commands, the reply
+	// shapes (unordered set arrays, score-ordered zset arrays, WITHSCORES
+	// interleave) that the base table only reached through their STORE variants.
+	base = append(base, setZsetOpCases()...)
+
 	// Large collections carried through the generic key ops, the breadth that
 	// small-collection cases cannot reach because they never cross the inline
 	// encoding boundary.
