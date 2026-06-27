@@ -1064,6 +1064,10 @@ func Cases() []Case {
 	// ZRANDMEMBER, SMOVE, the read-only command variants, and set encodings.
 	base = append(base, redis74SurfaceCases()...)
 
+	// Validation, arithmetic limit, and 7.4 bit-unit edge cases, the corners a
+	// reimplementation most often gets subtly wrong.
+	base = append(base, edge74Cases()...)
+
 	// Large collections carried through the generic key ops, the breadth that
 	// small-collection cases cannot reach because they never cross the inline
 	// encoding boundary.
