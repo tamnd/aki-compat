@@ -1,5 +1,7 @@
 package differential
 
+import "github.com/tamnd/aki-compat/target"
+
 // edge74Cases probes the corners where a reimplemented server most often drifts
 // from Redis 7.4: argument validation and error wording, integer and float
 // arithmetic limits, and the 7.4 bit-index unit. Most cases assert exact replies
@@ -113,7 +115,15 @@ func edge74Cases() []Case {
 		// INCRBYFLOAT normalizes its output: no trailing zeros, and scientific
 		// notation on input becomes plain decimal. The result strings are exact.
 		{
+			// INCRBYFLOAT computes in long double on Redis 7.4 and formats with
+			// "%.17Lf" then trims, so 10.5 + 0.1 keeps the long-double rounding and
+			// 3.0 + 1.000000000000000005 keeps the extra digit the 64-bit mantissa
+			// can hold. Valkey 9.1 reworked this to compute in plain double, which
+			// rounds 10.5 + 0.1 to the float64 value and collapses the tiny
+			// increment, so it diverges from the 7.4 behavior aki pins. The case
+			// asserts 7.4 and skips Valkey rather than reporting a false failure.
 			Name: "incrbyfloat-format",
+			Skip: []target.Kind{target.KindValkey},
 			Steps: []Command{
 				{"SET", "k", "10.5"},
 				{"INCRBYFLOAT", "k", "0.1"},
