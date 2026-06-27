@@ -38,21 +38,44 @@ jobs:
       - name: go test
         run: go test ./...
 
-  # Real differential run against Redis and Valkey from apt. This is best-effort:
-  # if apt or the servers misbehave the green baseline above is unaffected.
+  # Real differential run of aki against Redis 7.4, the exact version the suite
+  # targets. The Ubuntu apt redis is 7.0, which predates ZRANK WITHSCORE and the
+  # set listpack encoding, so it would report false divergences against the 7.4
+  # behavior aki pins. We build 7.4 from source instead. Valkey is left off PATH
+  # on purpose: the harness skips a target whose binary is missing, so the run
+  # compares aki against Redis 7.4 and a green result means aki matches 7.4.
+  # Still best-effort for now (continue-on-error) until it has a few green runs.
   differential:
     runs-on: ubuntu-latest
     continue-on-error: true
+    env:
+      REDIS_VERSION: 7.4.0
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-go@v6
         with:
           go-version: '1.26'
 
-      - name: Install Redis and Valkey
+      - name: Cache Redis 7.4 build
+        id: redis-cache
+        uses: actions/cache@v4
+        with:
+          path: /usr/local/bin/redis-server
+          key: redis-server-${{ env.REDIS_VERSION }}
+
+      - name: Build Redis 7.4 from source
+        if: steps.redis-cache.outputs.cache-hit != 'true'
         run: |
-          sudo apt-get update
-          sudo apt-get install -y redis-server valkey-server || sudo apt-get install -y redis-server
+          curl -fsSL "https://github.com/redis/redis/archive/refs/tags/${REDIS_VERSION}.tar.gz" -o redis.tar.gz
+          tar xzf redis.tar.gz
+          make -C "redis-${REDIS_VERSION}" -j"$(nproc)" redis-server
+          sudo cp "redis-${REDIS_VERSION}/src/redis-server" /usr/local/bin/redis-server
+
+      - name: Confirm Redis 7.4 on PATH
+        run: redis-server --version
+
+      - name: Install the aki binary
+        run: go install github.com/tamnd/aki/cmd/aki@main
 
       - name: Run differential suite
         run: go test -v ./differential/...
