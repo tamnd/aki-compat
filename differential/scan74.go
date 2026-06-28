@@ -1,5 +1,7 @@
 package differential
 
+import "github.com/tamnd/aki-compat/target"
+
 // scan74Cases covers the cursor scan family (SCAN, SSCAN, HSCAN, ZSCAN, the 7.4
 // HSCAN NOVALUES form) and a cluster of single-key commands the base table never
 // reached: RPOPLPUSH, the conditional pushes LPUSHX and RPUSHX, TOUCH, and the
@@ -55,6 +57,9 @@ func scan74Cases() []Case {
 				{"HSCAN", "missing", "0", "COUNT", "1000"},
 			},
 			Tolerate: map[int]Tolerance{1: ToleranceScan, 2: ToleranceScan, 3: ToleranceScan, 4: ToleranceScan, 5: ToleranceScan},
+			// HSCAN NOVALUES is a Redis 7.4 option; Valkey 7.2 rejects it with a
+			// syntax error, so this is a Redis-only assertion.
+			Skip: []target.Kind{target.KindValkey},
 		},
 		// ZSCAN walks a sorted set, interleaving member and score. The pair order is
 		// unspecified, so it is a scan reply too.
