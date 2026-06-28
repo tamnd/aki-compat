@@ -36,6 +36,7 @@ func redis74SurfaceCases() []Case {
 				{"HTTL", "h", "FIELDS", "1", "f1"},
 				{"HPERSIST", "h", "FIELDS", "1", "f2"},
 			},
+			Skip: []target.Kind{target.KindValkey},
 		},
 		// HEXPIREAT sets an absolute second-precision expiry. HEXPIRETIME echoes that
 		// exact second and HPEXPIRETIME echoes it in milliseconds, so both are
@@ -49,6 +50,7 @@ func redis74SurfaceCases() []Case {
 				{"HPEXPIRETIME", "h", "FIELDS", "1", "f1"},
 				{"HEXPIRETIME", "h", "FIELDS", "1", "nofield"},
 			},
+			Skip: []target.Kind{target.KindValkey},
 		},
 		// The NX, XX, GT and LT guards on HEXPIRE resolve to deterministic status
 		// codes given a fixed sequence of absolute expiries, all under the ebuckets
@@ -65,6 +67,7 @@ func redis74SurfaceCases() []Case {
 				{"HEXPIREAT", "h", "7777777777", "LT", "FIELDS", "1", "f1"},
 				{"HEXPIRETIME", "h", "FIELDS", "1", "f1"},
 			},
+			Skip: []target.Kind{target.KindValkey},
 		},
 		// The ebuckets ceiling. Redis 7.4 packs a hash field deadline into 46 bits,
 		// so an absolute expiry past 2^46-1 ms is rejected with the invalid-expire
@@ -94,6 +97,7 @@ func redis74SurfaceCases() []Case {
 				{"HEXPIREAT", "h", "1", "FIELDS", "1", "f2"},
 				{"EXISTS", "h"},
 			},
+			Skip: []target.Kind{target.KindValkey},
 		},
 		// LCS, the longest common subsequence command. The string, the length, and
 		// the IDX match structure are all deterministic for fixed inputs.
